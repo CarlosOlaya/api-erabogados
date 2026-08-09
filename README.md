@@ -26,7 +26,7 @@ GET    /propuestas/:id/pdf
 ## Desarrollo local
 
 ```bash
-npm install
+npm ci
 npm run start:dev
 ```
 
@@ -42,4 +42,3 @@ npm run test:e2e
 ## Alcance de esta primera versión
 
 Los snapshots se conservan en memoria para validar el flujo, la experiencia y el documento. Se reinician al reiniciar el proceso. Antes de producción, el siguiente paso es incorporar autenticación, roles, persistencia en base de datos, catálogo editable de plantillas y almacenamiento de versiones aprobadas.
-# api-erabogados
