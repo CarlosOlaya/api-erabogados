@@ -8,6 +8,10 @@
 # local test artifacts
 /tmp
 /output
+/test-results
+/playwright-report
+*.tsbuildinfo
+.eslintcache
 *.log
 
 # environment and editor files
