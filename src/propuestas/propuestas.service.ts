@@ -66,11 +66,14 @@ export class PropuestasService {
   update(id: string, input: ProposalSnapshot): StoredProposal {
     const current = this.findOne(id);
     const updatedAt = new Date().toISOString();
+    const version = current.publication
+      ? Math.max(current.proposal.version, current.publication.version + 1)
+      : current.proposal.version;
     const proposal: ProposalSnapshot = {
       ...input,
       id,
       code: current.code,
-      version: current.proposal.version + 1,
+      version,
       status: 'lista',
     };
     const stored: StoredProposal = {

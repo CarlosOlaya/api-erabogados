@@ -165,6 +165,19 @@ describe('Propuestas (e2e)', () => {
     expect(updated.proposal.version).toBe(2);
     expect(updated.proposal.status).toBe('lista');
 
+    const savedAgainResponse = await request(app.getHttpServer())
+      .patch(`/propuestas/${stored.id}`)
+      .send({
+        ...changed,
+        narrative: {
+          ...changed.narrative,
+          valueStatement: 'Segundo guardado de la misma revisión interna.',
+        },
+      })
+      .expect(200);
+    const savedAgain = savedAgainResponse.body as StoredProposal;
+    expect(savedAgain.proposal.version).toBe(2);
+
     const beforeRepublishResponse = await request(app.getHttpServer())
       .get(`/propuestas/publicas/${firstPublication.token}`)
       .expect(200);
