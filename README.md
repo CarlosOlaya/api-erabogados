@@ -1,19 +1,18 @@
 # API ER Abogados
 
-API independiente en Nest para las soluciones de `app-erabogados`. Su primer módulo guarda snapshots de propuestas y genera el PDF oficial en el servidor.
+API independiente en Nest para las soluciones de `app-erabogados`. Su primer módulo guarda borradores, publica snapshots versionados mediante un enlace estable y conserva el PDF como resumen ejecutivo secundario.
 
-## Motor de PDF
+## Publicación de propuestas
 
-La implementación replica el patrón productivo de Foodly:
+1. Angular guarda el borrador interno.
+2. Nest valida el contenido y congela la versión que se va a compartir.
+3. La primera publicación crea un token aleatorio y las siguientes conservan el mismo enlace.
+4. Editar el borrador no modifica la experiencia pública hasta que se publique otra vez.
+5. El payload público excluye el correo del cliente y el identificador interno.
 
-1. Angular envía la propuesta a la API.
-2. Nest conserva un snapshot con código y versión.
-3. `pdfmake` 0.2.18 compone el documento y devuelve un `Buffer`.
-4. Angular recibe el archivo como `Blob` y activa la descarga.
+El PDF generado con `pdfmake` 0.2.18 sigue disponible como resumen para archivo o comité, pero la experiencia web publicada es la versión principal.
 
-El navegador no captura HTML para crear el PDF; el documento es reproducible y se genera de forma centralizada.
-
-## Endpoints actuales
+## Endpoints
 
 ```text
 POST   /propuestas
@@ -21,7 +20,14 @@ PATCH  /propuestas/:id
 GET    /propuestas
 GET    /propuestas/:id
 GET    /propuestas/:id/pdf
+POST   /propuestas/:id/publicar
+DELETE /propuestas/:id/publicacion
+
+GET    /propuestas/publicas/:token
+GET    /propuestas/publicas/:token/pdf
 ```
+
+Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, nofollow, noarchive`. Las rutas internas todavía requieren autenticación antes de un despliegue productivo.
 
 ## Desarrollo local
 
@@ -41,4 +47,4 @@ npm run test:e2e
 
 ## Alcance de esta primera versión
 
-Los snapshots se conservan en memoria para validar el flujo, la experiencia y el documento. Se reinician al reiniciar el proceso. Antes de producción, el siguiente paso es incorporar autenticación, roles, persistencia en base de datos, catálogo editable de plantillas y almacenamiento de versiones aprobadas.
+Los borradores, publicaciones y métricas de acceso se conservan en memoria para validar el flujo. Se reinician al reiniciar el proceso; por lo tanto, los enlaces actuales son únicamente de demostración. Antes de producción se debe incorporar autenticación, roles, persistencia en base de datos, configuración de orígenes por ambiente y almacenamiento durable de versiones aprobadas.

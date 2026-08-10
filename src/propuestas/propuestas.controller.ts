@@ -1,6 +1,20 @@
-import { Body, Controller, Get, Param, Patch, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
-import { type ProposalSnapshot, type StoredProposal } from './propuesta.types';
+import {
+  type PublicationResult,
+  type ProposalSnapshot,
+  type RevocationResult,
+  type StoredProposal,
+} from './propuesta.types';
 import { PropuestasService } from './propuestas.service';
 
 @Controller('propuestas')
@@ -15,6 +29,16 @@ export class PropuestasController {
   @Post()
   create(@Body() proposal: ProposalSnapshot): StoredProposal {
     return this.propuestas.create(proposal);
+  }
+
+  @Post(':id/publicar')
+  publish(@Param('id') id: string): PublicationResult {
+    return this.propuestas.publish(id);
+  }
+
+  @Delete(':id/publicacion')
+  revoke(@Param('id') id: string): RevocationResult {
+    return this.propuestas.revoke(id);
   }
 
   @Get(':id/pdf')
@@ -39,7 +63,10 @@ export class PropuestasController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() proposal: ProposalSnapshot): StoredProposal {
+  update(
+    @Param('id') id: string,
+    @Body() proposal: ProposalSnapshot,
+  ): StoredProposal {
     return this.propuestas.update(id, proposal);
   }
 }

@@ -24,7 +24,7 @@ export const proposalPdfFileName = (proposal: ProposalSnapshot): string => {
     .trim()
     .slice(0, 60);
 
-  return `Propuesta ${proposal.code}${company ? ` - ${company}` : ''}.pdf`;
+  return `Resumen ejecutivo ${proposal.code}${company ? ` - ${company}` : ''}.pdf`;
 };
 
 export const getProposalReport = (
@@ -33,7 +33,9 @@ export const getProposalReport = (
 ): TDocumentDefinitions => {
   const activeAreas = selectedAreas(proposal);
   const companyName = proposal.client.company || 'su empresa';
-  const coverFontSize = companyName.length > 55 ? 23 : companyName.length > 36 ? 26 : 30;
+  const coverHeadline =
+    proposal.narrative?.headline || `Propuesta estratégica para ${companyName}`;
+  const coverFontSize = coverHeadline.length > 105 ? 21 : coverHeadline.length > 75 ? 23 : 26;
   const noPaddingLayout = {
     hLineWidth: () => 0,
     vLineWidth: () => 0,
@@ -90,7 +92,7 @@ export const getProposalReport = (
       absolutePosition: { x: 40, y: 370 },
     },
     {
-      text: 'PROPUESTA DE ACOMPAÑAMIENTO JURÍDICO',
+      text: 'RESUMEN EJECUTIVO DE ACOMPAÑAMIENTO JURÍDICO',
       color: '#c7a284',
       fontSize: 8,
       bold: true,
@@ -100,8 +102,10 @@ export const getProposalReport = (
     {
       columns: [{
         width: 500,
-        text: `Para ${companyName}\nRigor técnico y decisiones con respaldo.`,
-        color: '#ebe5e3',
+        text: [
+          { text: `${companyName}\n`, color: '#c7a284' },
+          { text: coverHeadline, color: '#ebe5e3' },
+        ],
         fontSize: coverFontSize,
         bold: true,
         lineHeight: 0.98,
@@ -130,7 +134,7 @@ export const getProposalReport = (
       absolutePosition: { x: 335, y: 702 },
     },
     {
-      text: 'ER ABOGADOS · RIGOR TÉCNICO. RESULTADOS CON RESPALDO.',
+      text: 'RESUMEN PARA ARCHIVO Y COMITÉ · LA EXPERIENCIA WEB ES LA VERSIÓN PRINCIPAL',
       color: '#80908d',
       fontSize: 7,
       bold: true,
@@ -332,7 +336,7 @@ export const getProposalReport = (
       ? { text: '' }
       : {
           columns: [
-            { text: 'ER Abogados · rigor técnico, método y estrategia', style: 'small', margin: [40, 0, 0, 0] },
+            { text: 'ER Abogados · resumen ejecutivo de la experiencia publicada', style: 'small', margin: [40, 0, 0, 0] },
             { text: `${page} / ${pages}`, alignment: 'right', style: 'small', margin: [0, 0, 40, 0] },
           ],
           margin: [0, 18, 0, 0],
