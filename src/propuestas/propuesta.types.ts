@@ -4,7 +4,7 @@ export const ER_AREAS = [
     number: '01',
     title: 'Derecho Civil',
     description:
-      'Procesos declarativos, sucesiones, pertenencia, acciones posesorias, procesos ejecutivos y recuperación de cartera.',
+      'Procesos declarativos y de tenencia de la tierra, sucesiones, liquidaciones patrimoniales, cobro de obligaciones, incumplimiento contractual, estudios de títulos y debida diligencia inmobiliaria.',
   },
   {
     id: 'responsabilidad-civil',
