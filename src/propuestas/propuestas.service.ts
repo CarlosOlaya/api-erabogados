@@ -47,6 +47,11 @@ export class PropuestasService {
     const code = `ER-PROP-${String(this.sequence++).padStart(4, '0')}`;
     const proposal: ProposalSnapshot = {
       ...input,
+      includeInvestment: input.includeInvestment ?? true,
+      investment: input.investment || 'A convenir',
+      includeAdditionalValue: input.includeAdditionalValue ?? false,
+      additionalValueLabel: input.additionalValueLabel || 'Valor adicional',
+      additionalValue: input.additionalValue || '',
       id,
       code,
       version: Math.max(1, input.version || 1),
@@ -71,6 +76,11 @@ export class PropuestasService {
       : current.proposal.version;
     const proposal: ProposalSnapshot = {
       ...input,
+      includeInvestment: input.includeInvestment ?? true,
+      investment: input.investment || 'A convenir',
+      includeAdditionalValue: input.includeAdditionalValue ?? false,
+      additionalValueLabel: input.additionalValueLabel || 'Valor adicional',
+      additionalValue: input.additionalValue || '',
       id,
       code: current.code,
       version,
@@ -208,7 +218,10 @@ export class PropuestasService {
       !this.isNonBlank(proposal.scope) ||
       !this.isNonBlank(proposal.strategy) ||
       !this.isNonBlank(proposal.responsible) ||
-      !this.isNonBlank(proposal.investment) ||
+      ((proposal.includeInvestment ?? true) && !this.isNonBlank(proposal.investment)) ||
+      ((proposal.includeAdditionalValue ?? false) &&
+        (!this.isNonBlank(proposal.additionalValueLabel) ||
+          !this.isNonBlank(proposal.additionalValue))) ||
       !this.isNonBlank(proposal.conditions) ||
       !hasArea
     ) {
@@ -233,7 +246,11 @@ export class PropuestasService {
       scope: proposal.scope,
       strategy: proposal.strategy,
       responsible: proposal.responsible,
+      includeInvestment: proposal.includeInvestment ?? true,
       investment: proposal.investment,
+      includeAdditionalValue: proposal.includeAdditionalValue ?? false,
+      additionalValueLabel: proposal.additionalValueLabel || 'Valor adicional',
+      additionalValue: proposal.additionalValue || '',
       conditions: proposal.conditions,
     };
   }

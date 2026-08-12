@@ -187,7 +187,7 @@ export const getProposalReport = (
       body: [[{
         stack: [
           {
-            text: 'INVERSIÓN',
+            text: 'HONORARIOS',
             color: '#563d2c',
             fontSize: 8,
             bold: true,
@@ -208,6 +208,40 @@ export const getProposalReport = (
     layout: 'noBorders',
   };
 
+  const additionalValueBlock: Content = {
+    table: {
+      widths: ['*'],
+      body: [[{
+        stack: [
+          {
+            text: (proposal.additionalValueLabel || 'VALOR ADICIONAL').toUpperCase(),
+            color: '#563d2c',
+            fontSize: 8,
+            bold: true,
+            characterSpacing: 1.1,
+          },
+          {
+            text: proposal.additionalValue,
+            color: '#422e20',
+            fontSize: 13,
+            bold: true,
+            margin: [0, 10, 0, 0],
+          },
+        ],
+        fillColor: '#f2ece5',
+        margin: [16, 15, 16, 15],
+      }]],
+    },
+    layout: 'noBorders',
+    margin: [0, 10, 0, 0],
+  };
+
+  const commercialBlocks: Content[] = [];
+  if (proposal.includeInvestment !== false) commercialBlocks.push(investmentBlock);
+  if (proposal.includeAdditionalValue && proposal.additionalValue) {
+    commercialBlocks.push(additionalValueBlock);
+  }
+
   const scopeBlock = ({
     table: {
       widths: ['*'],
@@ -227,11 +261,13 @@ export const getProposalReport = (
                 ],
                 margin: [0, 26, 15, 0],
               },
-              {
-                width: 180,
-                stack: [investmentBlock],
-                margin: [0, 26, 0, 0],
-              },
+              ...(commercialBlocks.length
+                ? [{
+                    width: 180,
+                    stack: commercialBlocks,
+                    margin: [0, 26, 0, 0],
+                  }]
+                : []),
             ],
           },
           { text: 'CONDICIONES', style: 'label', margin: [0, 26, 0, 10] },

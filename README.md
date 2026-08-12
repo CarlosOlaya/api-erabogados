@@ -25,6 +25,7 @@ DELETE /propuestas/:id/publicacion
 
 GET    /propuestas/publicas/:token
 GET    /propuestas/publicas/:token/pdf
+GET    /health
 ```
 
 Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, nofollow, noarchive`. Las rutas internas todavía requieren autenticación antes de un despliegue productivo.
@@ -38,6 +39,16 @@ npm run start:dev
 
 La API escucha en `http://localhost:3000` y permite solicitudes desde la app local en el puerto `4200`.
 
+## Despliegue en Railway
+
+`railway.json` fija la construcción, el inicio productivo y el control de salud. En el servicio configure:
+
+```text
+CORS_ORIGINS=https://su-app.vercel.app,https://su-dominio.com
+```
+
+Railway proporciona `PORT` automáticamente. La API escucha en `0.0.0.0` y responde `200` en `/health`.
+
 ## Verificación
 
 ```bash
@@ -47,4 +58,4 @@ npm run test:e2e
 
 ## Alcance de esta primera versión
 
-Los borradores, publicaciones y métricas de acceso se conservan en memoria para validar el flujo. Se reinician al reiniciar el proceso; por lo tanto, los enlaces actuales son únicamente de demostración. Antes de producción se debe incorporar autenticación, roles, persistencia en base de datos, configuración de orígenes por ambiente y almacenamiento durable de versiones aprobadas.
+Los borradores, publicaciones y métricas de acceso se conservan en memoria para validar el flujo. Se reinician al reiniciar el proceso; por lo tanto, los enlaces actuales son únicamente de demostración. La siguiente fase incorporará persistencia en base de datos y almacenamiento durable de versiones aprobadas. La autenticación y los roles también siguen siendo obligatorios antes de exponer el estudio interno como producto final.

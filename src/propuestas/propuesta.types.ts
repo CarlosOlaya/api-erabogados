@@ -94,7 +94,11 @@ export interface ProposalSnapshot {
   scope: string;
   strategy: string;
   responsible: string;
+  includeInvestment: boolean;
   investment: string;
+  includeAdditionalValue: boolean;
+  additionalValueLabel: string;
+  additionalValue: string;
   conditions: string;
 }
 

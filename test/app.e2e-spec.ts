@@ -46,7 +46,11 @@ const proposalFixture = (): ProposalSnapshot => ({
   strategy:
     'Interlocución directa y reportes claros para la toma de decisiones.',
   responsible: 'Equipo ER Abogados',
+  includeInvestment: true,
   investment: 'Según alcance y modalidad de acompañamiento.',
+  includeAdditionalValue: false,
+  additionalValueLabel: 'Valor adicional',
+  additionalValue: '',
   conditions: 'El alcance definitivo se acuerda por escrito antes del inicio.',
 });
 
@@ -255,6 +259,17 @@ describe('Propuestas (e2e)', () => {
 
     const error = response.body as { message: string };
     expect(error.message).toContain('Complete empresa');
+  });
+
+  it('expone un control de salud para Railway', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      service: 'api-erabogados',
+    });
   });
 
   afterAll(async () => {
