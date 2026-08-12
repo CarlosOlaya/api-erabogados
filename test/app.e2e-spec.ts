@@ -1,8 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { newDb } from 'pg-mem';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { DataSource } from 'typeorm';
 import { AppModule } from './../src/app.module';
+import { CreateProposals1786420000000 } from './../src/database/migrations/1786420000000-CreateProposals';
+import { ProposalEntity } from './../src/propuestas/propuesta.entity';
+import { ProposalVersionEntity } from './../src/propuestas/propuesta-version.entity';
 import type {
   PublicationResult,
   ProposalSnapshot,
@@ -56,11 +62,36 @@ const proposalFixture = (): ProposalSnapshot => ({
 
 describe('Propuestas (e2e)', () => {
   let app: INestApplication<App>;
+  let database: DataSource;
 
   beforeAll(async () => {
+    const memoryDatabase = newDb({ autoCreateForeignKeyIndices: true });
+    memoryDatabase.public.registerFunction({
+      name: 'current_database',
+      implementation: () => 'erabogados_test',
+    });
+    memoryDatabase.public.registerFunction({
+      name: 'version',
+      implementation: () => 'PostgreSQL 16 test',
+    });
+    const memoryDataSource: unknown =
+      memoryDatabase.adapters.createTypeormDataSource({
+        type: 'postgres',
+        entities: [ProposalEntity, ProposalVersionEntity],
+        migrations: [CreateProposals1786420000000],
+        migrationsTableName: 'er_migrations',
+        synchronize: false,
+      });
+    database = memoryDataSource as DataSource;
+    await database.initialize();
+    await database.runMigrations();
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(getDataSourceToken())
+      .useValue(database)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -76,6 +107,11 @@ describe('Propuestas (e2e)', () => {
     expect(typeof stored.id).toBe('string');
     expect(stored.id).not.toHaveLength(0);
     expect(stored.code).toBe('ER-PROP-0001');
+
+    const persisted = await database.getRepository(ProposalEntity).findOneBy({
+      id: stored.id,
+    });
+    expect(persisted?.proposal.client.company).toBe('Vértice Energía S.A.S.');
 
     const pdf = await request(app.getHttpServer())
       .get(`/propuestas/${stored.id}/pdf`)
@@ -209,6 +245,20 @@ describe('Propuestas (e2e)', () => {
     expect(afterRepublish.proposal.narrative.headline).toBe(
       'Nueva versión aprobada por el comité directivo.',
     );
+
+    const versionHistory = await database
+      .getRepository(ProposalVersionEntity)
+      .find({
+        where: { proposalId: stored.id },
+        order: { version: 'ASC' },
+      });
+    expect(versionHistory.map((record) => record.version)).toEqual([1, 2]);
+    expect(versionHistory[0].snapshot.narrative.headline).toBe(
+      original.narrative.headline,
+    );
+    expect(versionHistory[1].snapshot.narrative.headline).toBe(
+      'Nueva versión aprobada por el comité directivo.',
+    );
   });
 
   it('revoca el acceso público de forma idempotente', async () => {
@@ -269,6 +319,7 @@ describe('Propuestas (e2e)', () => {
     expect(response.body).toMatchObject({
       status: 'ok',
       service: 'api-erabogados',
+      database: 'connected',
     });
   });
 

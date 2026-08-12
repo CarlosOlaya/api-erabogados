@@ -22,22 +22,22 @@ export class PropuestasController {
   constructor(private readonly propuestas: PropuestasService) {}
 
   @Get()
-  findAll(): StoredProposal[] {
+  findAll(): Promise<StoredProposal[]> {
     return this.propuestas.findAll();
   }
 
   @Post()
-  create(@Body() proposal: ProposalSnapshot): StoredProposal {
+  create(@Body() proposal: ProposalSnapshot): Promise<StoredProposal> {
     return this.propuestas.create(proposal);
   }
 
   @Post(':id/publicar')
-  publish(@Param('id') id: string): PublicationResult {
+  publish(@Param('id') id: string): Promise<PublicationResult> {
     return this.propuestas.publish(id);
   }
 
   @Delete(':id/publicacion')
-  revoke(@Param('id') id: string): RevocationResult {
+  revoke(@Param('id') id: string): Promise<RevocationResult> {
     return this.propuestas.revoke(id);
   }
 
@@ -58,7 +58,7 @@ export class PropuestasController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string): StoredProposal {
+  findOne(@Param('id') id: string): Promise<StoredProposal> {
     return this.propuestas.findOne(id);
   }
 
@@ -66,7 +66,7 @@ export class PropuestasController {
   update(
     @Param('id') id: string,
     @Body() proposal: ProposalSnapshot,
-  ): StoredProposal {
+  ): Promise<StoredProposal> {
     return this.propuestas.update(id, proposal);
   }
 }

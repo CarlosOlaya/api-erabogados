@@ -3,13 +3,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { DataSource, Repository } from 'typeorm';
 import { PdfPrinterService } from '../common/pdf-printer.service';
+import { ProposalEntity } from './propuesta.entity';
+import { ProposalVersionEntity } from './propuesta-version.entity';
 import { getProposalReport, proposalPdfFileName } from './proposal-report';
 import {
-  type PublicationResult,
   type ProposalPublication,
   type ProposalSnapshot,
+  type PublicationResult,
   type PublicProposalResult,
   type PublicProposalSnapshot,
   type RevocationResult,
@@ -23,131 +27,135 @@ type PublishedProposal = StoredProposal & {
 
 @Injectable()
 export class PropuestasService {
-  private readonly proposals = new Map<string, StoredProposal>();
-  private sequence = 1;
+  constructor(
+    @InjectRepository(ProposalEntity)
+    private readonly proposals: Repository<ProposalEntity>,
+    private readonly database: DataSource,
+    private readonly pdfPrinter: PdfPrinterService,
+  ) {}
 
-  constructor(private readonly pdfPrinter: PdfPrinterService) {}
-
-  findAll(): StoredProposal[] {
-    return [...this.proposals.values()].sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt),
-    );
+  async findAll(): Promise<StoredProposal[]> {
+    const proposals = await this.proposals.find({
+      order: { updatedAt: 'DESC' },
+    });
+    return proposals.map((proposal) => this.toStored(proposal));
   }
 
-  findOne(id: string): StoredProposal {
-    const proposal = this.proposals.get(id);
-    if (!proposal)
-      throw new NotFoundException('La propuesta solicitada no existe.');
-    return proposal;
+  async findOne(id: string): Promise<StoredProposal> {
+    return this.toStored(await this.findOneEntity(id));
   }
 
-  create(input: ProposalSnapshot): StoredProposal {
+  async create(input: ProposalSnapshot): Promise<StoredProposal> {
     const id = randomUUID();
-    const now = new Date().toISOString();
-    const code = `ER-PROP-${String(this.sequence++).padStart(4, '0')}`;
-    const proposal: ProposalSnapshot = {
-      ...input,
-      includeInvestment: input.includeInvestment ?? true,
-      investment: input.investment || 'A convenir',
-      includeAdditionalValue: input.includeAdditionalValue ?? false,
-      additionalValueLabel: input.additionalValueLabel || 'Valor adicional',
-      additionalValue: input.additionalValue || '',
+    const proposal = this.normalizeProposal(input, {
       id,
-      code,
+      code: '',
       version: Math.max(1, input.version || 1),
       status: 'borrador',
-    };
-    const stored: StoredProposal = {
-      id,
-      code,
-      proposal,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.proposals.set(id, stored);
-    return stored;
+    });
+
+    return this.database.transaction(async (manager) => {
+      const repository = manager.getRepository(ProposalEntity);
+      let entity = repository.create({
+        id,
+        code: null,
+        proposal,
+        publishedSnapshot: null,
+        publicationToken: null,
+        publicationStatus: null,
+        publicationVersion: null,
+        publishedAt: null,
+        publicationUpdatedAt: null,
+        viewCount: 0,
+        lastViewedAt: null,
+        revokedAt: null,
+      });
+      entity = await repository.save(entity);
+
+      const [{ sequence_id: sequenceId }] = await repository.query<
+        Array<{ sequence_id: string }>
+      >('SELECT "sequence_id" FROM "proposals" WHERE "id" = $1', [id]);
+      const code = `ER-PROP-${String(sequenceId).padStart(4, '0')}`;
+      entity.sequenceId = sequenceId;
+      entity.code = code;
+      entity.proposal = { ...entity.proposal, code };
+      return this.toStored(await repository.save(entity));
+    });
   }
 
-  update(id: string, input: ProposalSnapshot): StoredProposal {
-    const current = this.findOne(id);
-    const updatedAt = new Date().toISOString();
-    const version = current.publication
-      ? Math.max(current.proposal.version, current.publication.version + 1)
-      : current.proposal.version;
-    const proposal: ProposalSnapshot = {
-      ...input,
-      includeInvestment: input.includeInvestment ?? true,
-      investment: input.investment || 'A convenir',
-      includeAdditionalValue: input.includeAdditionalValue ?? false,
-      additionalValueLabel: input.additionalValueLabel || 'Valor adicional',
-      additionalValue: input.additionalValue || '',
+  async update(id: string, input: ProposalSnapshot): Promise<StoredProposal> {
+    const entity = await this.findOneEntity(id);
+    const publication = this.toStored(entity).publication;
+    const version = publication
+      ? Math.max(entity.proposal.version, publication.version + 1)
+      : entity.proposal.version;
+
+    entity.proposal = this.normalizeProposal(input, {
       id,
-      code: current.code,
+      code: this.requireCode(entity),
       version,
       status: 'lista',
-    };
-    const stored: StoredProposal = {
-      id,
-      code: current.code,
-      proposal,
-      createdAt: current.createdAt,
-      updatedAt,
-      publication: current.publication,
-      publishedSnapshot: current.publishedSnapshot,
-    };
-    this.proposals.set(id, stored);
-    return stored;
+    });
+    entity.updatedAt = new Date();
+    return this.toStored(await this.proposals.save(entity));
   }
 
   async pdf(id: string): Promise<{ buffer: Buffer; filename: string }> {
-    const stored = this.findOne(id);
+    const stored = await this.findOne(id);
     return this.renderPdf(stored.proposal);
   }
 
-  publish(id: string): PublicationResult {
-    const current = this.findOne(id);
-    this.assertPublishable(current.proposal);
+  async publish(id: string): Promise<PublicationResult> {
+    return this.database.transaction(async (manager) => {
+      const proposals = manager.getRepository(ProposalEntity);
+      const versions = manager.getRepository(ProposalVersionEntity);
+      const entity = await this.findOneEntity(id, proposals);
+      const current = this.toStored(entity);
+      this.assertPublishable(current.proposal);
 
-    if (
-      current.publication?.status === 'published' &&
-      current.publication.version === current.proposal.version &&
-      current.publishedSnapshot
-    ) {
-      return this.toPublicationResult(current);
-    }
+      if (
+        current.publication?.status === 'published' &&
+        current.publication.version === current.proposal.version &&
+        current.publishedSnapshot
+      ) {
+        return this.toPublicationResult(current);
+      }
 
-    const now = new Date().toISOString();
-    const token = current.publication?.token ?? this.createPublicToken();
-    const proposal: ProposalSnapshot = {
-      ...current.proposal,
-      status: 'publicada',
-    };
-    const publishedSnapshot = this.toPublicSnapshot(proposal);
-    const publication = {
-      token,
-      version: proposal.version,
-      status: 'published' as const,
-      publishedAt: now,
-      updatedAt: now,
-      viewCount: current.publication?.viewCount ?? 0,
-      lastViewedAt: current.publication?.lastViewedAt,
-      revokedAt: undefined,
-    };
+      const now = new Date();
+      const token =
+        entity.publicationToken ?? (await this.createPublicToken(proposals));
+      entity.proposal = { ...current.proposal, status: 'publicada' };
+      entity.publishedSnapshot = this.toPublicSnapshot(entity.proposal);
+      entity.publicationToken = token;
+      entity.publicationVersion = entity.proposal.version;
+      entity.publicationStatus = 'published';
+      entity.publishedAt = now;
+      entity.publicationUpdatedAt = now;
+      entity.revokedAt = null;
+      entity.updatedAt = now;
 
-    const stored: StoredProposal = {
-      ...current,
-      proposal,
-      publication,
-      publishedSnapshot,
-      updatedAt: now,
-    };
-    this.proposals.set(id, stored);
+      const saved = await proposals.save(entity);
+      const versionExists = await versions.exists({
+        where: { proposalId: id, version: entity.proposal.version },
+      });
+      if (!versionExists) {
+        await versions.insert({
+          id: randomUUID(),
+          proposalId: id,
+          version: entity.proposal.version,
+          snapshot: entity.publishedSnapshot,
+          publishedAt: now,
+        });
+      }
 
-    return this.toPublicationResult(stored);
+      return this.toPublicationResult(this.toStored(saved));
+    });
   }
 
-  findPublic(token: string): PublicProposalResult {
-    const current = this.trackPublicAccess(this.findPublished(token));
+  async findPublic(token: string): Promise<PublicProposalResult> {
+    const current = await this.trackPublicAccess(
+      await this.findPublished(token),
+    );
 
     return {
       code: current.code,
@@ -160,12 +168,15 @@ export class PropuestasService {
   async publicPdf(
     token: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
-    const current = this.trackPublicAccess(this.findPublished(token));
+    const current = await this.trackPublicAccess(
+      await this.findPublished(token),
+    );
     return this.renderPdf(this.toReportSnapshot(current));
   }
 
-  revoke(id: string): RevocationResult {
-    const current = this.findOne(id);
+  async revoke(id: string): Promise<RevocationResult> {
+    const entity = await this.findOneEntity(id);
+    const current = this.toStored(entity);
     if (!current.publication) {
       throw new NotFoundException(
         'La propuesta todavía no tiene una publicación.',
@@ -182,26 +193,85 @@ export class PropuestasService {
       };
     }
 
-    const revokedAt = new Date().toISOString();
-    const publication: ProposalPublication = {
-      ...current.publication,
-      status: 'revoked',
-      updatedAt: revokedAt,
-      revokedAt,
-    };
-    this.proposals.set(id, {
-      ...current,
-      proposal: { ...current.proposal, status: 'lista' },
-      publication,
-      updatedAt: revokedAt,
-    });
+    const revokedAt = new Date();
+    entity.proposal = { ...entity.proposal, status: 'lista' };
+    entity.publicationStatus = 'revoked';
+    entity.publicationUpdatedAt = revokedAt;
+    entity.revokedAt = revokedAt;
+    entity.updatedAt = revokedAt;
+    const stored = this.toStored(await this.proposals.save(entity));
 
     return {
       proposalId: id,
-      token: publication.token,
+      token: stored.publication!.token,
       status: 'revoked',
-      revokedAt,
+      revokedAt: stored.publication!.revokedAt!,
     };
+  }
+
+  private async findOneEntity(
+    id: string,
+    repository: Repository<ProposalEntity> = this.proposals,
+  ): Promise<ProposalEntity> {
+    const proposal = await repository.findOne({ where: { id } });
+    if (!proposal) {
+      throw new NotFoundException('La propuesta solicitada no existe.');
+    }
+    return proposal;
+  }
+
+  private normalizeProposal(
+    input: ProposalSnapshot,
+    identity: Pick<ProposalSnapshot, 'id' | 'code' | 'version' | 'status'>,
+  ): ProposalSnapshot {
+    return {
+      ...input,
+      includeInvestment: input.includeInvestment ?? true,
+      investment: input.investment || 'A convenir',
+      includeAdditionalValue: input.includeAdditionalValue ?? false,
+      additionalValueLabel: input.additionalValueLabel || 'Valor adicional',
+      additionalValue: input.additionalValue || '',
+      ...identity,
+    };
+  }
+
+  private toStored(entity: ProposalEntity): StoredProposal {
+    const code = this.requireCode(entity);
+    const hasPublication =
+      entity.publicationToken &&
+      entity.publicationStatus &&
+      entity.publicationVersion !== null &&
+      entity.publishedAt &&
+      entity.publicationUpdatedAt;
+    const publication: ProposalPublication | undefined = hasPublication
+      ? {
+          token: entity.publicationToken!,
+          version: entity.publicationVersion!,
+          status: entity.publicationStatus!,
+          publishedAt: entity.publishedAt!.toISOString(),
+          updatedAt: entity.publicationUpdatedAt!.toISOString(),
+          viewCount: entity.viewCount,
+          lastViewedAt: entity.lastViewedAt?.toISOString(),
+          revokedAt: entity.revokedAt?.toISOString(),
+        }
+      : undefined;
+
+    return {
+      id: entity.id,
+      code,
+      proposal: { ...entity.proposal, id: entity.id, code },
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString(),
+      publication,
+      publishedSnapshot: entity.publishedSnapshot ?? undefined,
+    };
+  }
+
+  private requireCode(entity: ProposalEntity): string {
+    if (!entity.code) {
+      throw new Error(`La propuesta ${entity.id} no tiene código asignado.`);
+    }
+    return entity.code;
   }
 
   private assertPublishable(proposal: ProposalSnapshot): void {
@@ -218,7 +288,8 @@ export class PropuestasService {
       !this.isNonBlank(proposal.scope) ||
       !this.isNonBlank(proposal.strategy) ||
       !this.isNonBlank(proposal.responsible) ||
-      ((proposal.includeInvestment ?? true) && !this.isNonBlank(proposal.investment)) ||
+      ((proposal.includeInvestment ?? true) &&
+        !this.isNonBlank(proposal.investment)) ||
       ((proposal.includeAdditionalValue ?? false) &&
         (!this.isNonBlank(proposal.additionalValueLabel) ||
           !this.isNonBlank(proposal.additionalValue))) ||
@@ -255,12 +326,11 @@ export class PropuestasService {
     };
   }
 
-  private findPublished(token: string): PublishedProposal {
-    const current = [...this.proposals.values()].find(
-      (stored) =>
-        stored.publication?.token === token &&
-        stored.publication.status === 'published',
-    );
+  private async findPublished(token: string): Promise<PublishedProposal> {
+    const entity = await this.proposals.findOne({
+      where: { publicationToken: token, publicationStatus: 'published' },
+    });
+    const current = entity ? this.toStored(entity) : undefined;
 
     if (!current?.publication || !current.publishedSnapshot) {
       throw new NotFoundException(
@@ -271,29 +341,30 @@ export class PropuestasService {
     return current as PublishedProposal;
   }
 
-  private trackPublicAccess(current: PublishedProposal): PublishedProposal {
-    const now = new Date().toISOString();
-    const stored: PublishedProposal = {
+  private async trackPublicAccess(
+    current: PublishedProposal,
+  ): Promise<PublishedProposal> {
+    const now = new Date();
+    await this.proposals.increment({ id: current.id }, 'viewCount', 1);
+    await this.proposals.update({ id: current.id }, { lastViewedAt: now });
+
+    return {
       ...current,
       publication: {
         ...current.publication,
         viewCount: current.publication.viewCount + 1,
-        lastViewedAt: now,
+        lastViewedAt: now.toISOString(),
       },
     };
-    this.proposals.set(current.id, stored);
-    return stored;
   }
 
-  private createPublicToken(): string {
+  private async createPublicToken(
+    repository: Repository<ProposalEntity> = this.proposals,
+  ): Promise<string> {
     let token: string;
     do {
       token = randomBytes(24).toString('base64url');
-    } while (
-      [...this.proposals.values()].some(
-        (stored) => stored.publication?.token === token,
-      )
-    );
+    } while (await repository.exists({ where: { publicationToken: token } }));
     return token;
   }
 

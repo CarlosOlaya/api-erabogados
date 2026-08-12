@@ -1,6 +1,6 @@
 # API ER Abogados
 
-API independiente en Nest para las soluciones de `app-erabogados`. Su primer módulo guarda borradores, publica snapshots versionados mediante un enlace estable y conserva el PDF como resumen ejecutivo secundario.
+API independiente en Nest para las soluciones de `app-erabogados`. Su primer módulo persiste borradores en PostgreSQL, publica snapshots versionados mediante un enlace estable y conserva el PDF como resumen ejecutivo secundario.
 
 ## Publicación de propuestas
 
@@ -32,8 +32,12 @@ Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, 
 
 ## Desarrollo local
 
+La API necesita PostgreSQL. Copie `.env.example` a `.env`, ajuste `DATABASE_URL` y ejecute la migración inicial:
+
 ```bash
 npm ci
+npm run build
+npm run migration:run
 npm run start:dev
 ```
 
@@ -41,13 +45,19 @@ La API escucha en `http://localhost:3000` y permite solicitudes desde la app loc
 
 ## Despliegue en Railway
 
-`railway.json` fija la construcción, el inicio productivo y el control de salud. En el servicio configure:
+1. Agregue un servicio PostgreSQL al mismo proyecto y ambiente de Railway.
+2. En el servicio de la API cree una variable de referencia `DATABASE_URL` que apunte a `Postgres.DATABASE_URL`. Esta conexión usa la red privada de Railway.
+3. Configure los orígenes permitidos:
 
 ```text
 CORS_ORIGINS=https://su-app.vercel.app,https://su-dominio.com
+DB_SSL=false
+DB_POOL_MAX=5
 ```
 
-Railway proporciona `PORT` automáticamente. La API escucha en `0.0.0.0` y responde `200` en `/health`.
+`railway.json` compila la aplicación, ejecuta las migraciones como paso previo al despliegue, inicia Nest y comprueba `/health`. El control de salud solo responde correctamente cuando PostgreSQL también está disponible. Railway proporciona `PORT` automáticamente.
+
+No use `DATABASE_PUBLIC_URL` entre la API y PostgreSQL: la URL privada evita exposición innecesaria y tráfico saliente. Para una conexión externa de administración use una URL pública únicamente durante esa operación.
 
 ## Verificación
 
@@ -58,4 +68,6 @@ npm run test:e2e
 
 ## Alcance de esta primera versión
 
-Los borradores, publicaciones y métricas de acceso se conservan en memoria para validar el flujo. Se reinician al reiniciar el proceso; por lo tanto, los enlaces actuales son únicamente de demostración. La siguiente fase incorporará persistencia en base de datos y almacenamiento durable de versiones aprobadas. La autenticación y los roles también siguen siendo obligatorios antes de exponer el estudio interno como producto final.
+PostgreSQL conserva borradores, datos del cliente, el snapshot activo, el historial inmutable de cada versión publicada, tokens, revocaciones y métricas de acceso después de reinicios y nuevos despliegues. Los PDF se generan bajo demanda desde el payload persistido y no se almacenan como archivos binarios.
+
+La autenticación y los roles siguen siendo obligatorios antes de exponer el estudio interno como producto final. También se deben activar copias de seguridad periódicas en Railway antes de operar información real de clientes.

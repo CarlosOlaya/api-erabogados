@@ -1,12 +1,17 @@
 import { Controller, Get } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 
 @Controller('health')
 export class HealthController {
+  constructor(private readonly database: DataSource) {}
+
   @Get()
-  check() {
+  async check() {
+    await this.database.query('SELECT 1');
     return {
       status: 'ok',
       service: 'api-erabogados',
+      database: 'connected',
       timestamp: new Date().toISOString(),
     };
   }

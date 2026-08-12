@@ -32,7 +32,7 @@ export class PropuestasPublicasController {
   @Get(':token')
   @Header('Cache-Control', 'no-store')
   @Header('X-Robots-Tag', 'noindex, nofollow, noarchive')
-  findOne(@Param('token') token: string): PublicProposalResult {
+  findOne(@Param('token') token: string): Promise<PublicProposalResult> {
     return this.propuestas.findPublic(token);
   }
 }
