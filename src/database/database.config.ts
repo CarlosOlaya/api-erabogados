@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { DataSourceOptions } from 'typeorm';
 import { ProposalEntity } from '../propuestas/propuesta.entity';
 import { ProposalVersionEntity } from '../propuestas/propuesta-version.entity';
+import { FirmProfileEntity } from '../firma/firma.entity';
 
 function requireDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL?.trim();
@@ -25,7 +26,7 @@ export function databaseOptions(): DataSourceOptions {
   return {
     type: 'postgres',
     url: requireDatabaseUrl(),
-    entities: [ProposalEntity, ProposalVersionEntity],
+    entities: [ProposalEntity, ProposalVersionEntity, FirmProfileEntity],
     migrations: [join(__dirname, 'migrations', '*.{js,ts}')],
     migrationsTableName: 'er_migrations',
     synchronize: false,

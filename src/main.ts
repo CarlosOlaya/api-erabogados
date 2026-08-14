@@ -22,7 +22,7 @@ async function bootstrap() {
 
       callback(new Error(`Origen no autorizado por CORS: ${origin}`), false);
     },
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   });
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }

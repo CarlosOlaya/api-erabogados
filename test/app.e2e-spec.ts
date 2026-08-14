@@ -7,6 +7,8 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { AppModule } from './../src/app.module';
 import { CreateProposals1786420000000 } from './../src/database/migrations/1786420000000-CreateProposals';
+import { CreateFirmProfiles1786500000000 } from './../src/database/migrations/1786500000000-CreateFirmProfiles';
+import { FirmProfileEntity } from './../src/firma/firma.entity';
 import { ProposalEntity } from './../src/propuestas/propuesta.entity';
 import { ProposalVersionEntity } from './../src/propuestas/propuesta-version.entity';
 import type {
@@ -77,8 +79,8 @@ describe('Propuestas (e2e)', () => {
     const memoryDataSource: unknown =
       memoryDatabase.adapters.createTypeormDataSource({
         type: 'postgres',
-        entities: [ProposalEntity, ProposalVersionEntity],
-        migrations: [CreateProposals1786420000000],
+        entities: [ProposalEntity, ProposalVersionEntity, FirmProfileEntity],
+        migrations: [CreateProposals1786420000000, CreateFirmProfiles1786500000000],
         migrationsTableName: 'er_migrations',
         synchronize: false,
       });
@@ -86,6 +88,7 @@ describe('Propuestas (e2e)', () => {
     await database.initialize();
     await database.runMigrations();
 
+    process.env.ER_ADMIN_TOKEN = 'test-firm-token';
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -323,7 +326,64 @@ describe('Propuestas (e2e)', () => {
     });
   });
 
+  it('centraliza el perfil corporativo y protege su actualización', async () => {
+    const currentResponse = await request(app.getHttpServer())
+      .get('/firma/perfil')
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+    const current = currentResponse.body as {
+      version: number;
+      updatedAt: string;
+      identity: { name: string };
+      team: Array<{ id: string }>;
+      metrics: Array<{ publicable: boolean; value: string | null }>;
+    };
+
+    expect(current.identity.name).toBe('ER Abogados');
+    expect(current.team).toHaveLength(8);
+    expect(current.metrics.every((metric) => !metric.publicable && metric.value === null)).toBe(
+      true,
+    );
+    expect(typeof current.updatedAt).toBe('string');
+
+    await request(app.getHttpServer()).put('/firma/perfil').send(current).expect(401);
+
+    const unsupportedMetric = {
+      ...current,
+      metrics: [
+        {
+          id: 'resultados-favorables',
+          label: 'Resultados favorables',
+          value: '91%',
+          evidence: null,
+          validatedAt: null,
+          publicable: true,
+        },
+      ],
+    };
+    await request(app.getHttpServer())
+      .put('/firma/perfil')
+      .set('Authorization', 'Bearer test-firm-token')
+      .send(unsupportedMetric)
+      .expect(400);
+
+    const next = {
+      ...current,
+      identity: { ...current.identity, name: 'ER Abogados Actualizado' },
+    };
+    const updatedResponse = await request(app.getHttpServer())
+      .put('/firma/perfil')
+      .set('Authorization', 'Bearer test-firm-token')
+      .send(next)
+      .expect(200);
+    const updated = updatedResponse.body as typeof current;
+
+    expect(updated.version).toBe(current.version + 1);
+    expect(updated.identity.name).toBe('ER Abogados Actualizado');
+  });
+
   afterAll(async () => {
     await app.close();
+    delete process.env.ER_ADMIN_TOKEN;
   });
 });

@@ -25,10 +25,26 @@ DELETE /propuestas/:id/publicacion
 
 GET    /propuestas/publicas/:token
 GET    /propuestas/publicas/:token/pdf
+GET    /firma/perfil
+PUT    /firma/perfil
 GET    /health
 ```
 
 Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, nofollow, noarchive`. Las rutas internas todavía requieren autenticación antes de un despliegue productivo.
+
+## Registro maestro de la firma
+
+El perfil corporativo —contacto, áreas de práctica, integrantes, testimonios y métricas— vive en PostgreSQL y se expone de forma pública, sin datos de propuestas, en `GET /firma/perfil`.
+
+La actualización requiere `PUT /firma/perfil` con `Authorization: Bearer <ER_ADMIN_TOKEN>`. Al guardar, la versión aumenta y la API puede solicitar las reconstrucciones de Vercel mediante estas variables de Railway:
+
+```text
+ER_ADMIN_TOKEN=<token-largo-y-privado>
+LANDING_DEPLOY_HOOK=<deploy-hook-del-proyecto-landing>
+PORTAL_DEPLOY_HOOK=<deploy-hook-del-proyecto-app>
+```
+
+Los porcentajes, cifras de éxito y tiempos no se publican hasta que el registro los marque como `publicable`, con evidencia y fecha de validación.
 
 ## Desarrollo local
 
@@ -53,6 +69,9 @@ La API escucha en `http://localhost:3000` y permite solicitudes desde la app loc
 CORS_ORIGINS=https://su-app.vercel.app,https://su-dominio.com
 DB_SSL=false
 DB_POOL_MAX=5
+ER_ADMIN_TOKEN=<token-largo-y-privado>
+LANDING_DEPLOY_HOOK=<deploy-hook-de-la-landing>
+PORTAL_DEPLOY_HOOK=<deploy-hook-del-portal>
 ```
 
 `railway.json` compila la aplicación, ejecuta las migraciones como paso previo al despliegue, inicia Nest y comprueba `/health`. El control de salud solo responde correctamente cuando PostgreSQL también está disponible. Railway proporciona `PORT` automáticamente.
