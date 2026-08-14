@@ -114,6 +114,7 @@ export interface StoredProposal {
 
 export interface ProposalPublication {
   token: string;
+  slug?: string;
   version: number;
   status: 'published' | 'revoked';
   publishedAt: string;
@@ -133,10 +134,16 @@ export type PublicProposalSnapshot = Omit<ProposalSnapshot, 'id' | 'client'> & {
 export interface PublicationResult {
   proposalId: string;
   token: string;
+  slug: string;
   path: string;
   version: number;
   status: 'published';
   publishedAt: string;
+}
+
+export interface DeletionResult {
+  proposalId: string;
+  status: 'deleted';
 }
 
 export interface RevocationResult {

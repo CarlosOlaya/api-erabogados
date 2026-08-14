@@ -36,3 +36,15 @@ export class PropuestasPublicasController {
     return this.propuestas.findPublic(token);
   }
 }
+
+@Controller('propuestas/portales')
+export class PortalesPublicosController {
+  constructor(private readonly propuestas: PropuestasService) {}
+
+  @Get(':slug')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Robots-Tag', 'noindex, nofollow, noarchive')
+  findOne(@Param('slug') slug: string): Promise<PublicProposalResult> {
+    return this.propuestas.findPublicBySlug(slug);
+  }
+}

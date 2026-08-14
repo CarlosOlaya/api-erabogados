@@ -8,11 +8,13 @@ import { DataSource } from 'typeorm';
 import { AppModule } from './../src/app.module';
 import { CreateProposals1786420000000 } from './../src/database/migrations/1786420000000-CreateProposals';
 import { CreateFirmProfiles1786500000000 } from './../src/database/migrations/1786500000000-CreateFirmProfiles';
+import { AddProposalPublicationSlug1786600000000 } from './../src/database/migrations/1786600000000-AddProposalPublicationSlug';
 import { FirmProfileEntity } from './../src/firma/firma.entity';
 import { ProposalEntity } from './../src/propuestas/propuesta.entity';
 import { ProposalVersionEntity } from './../src/propuestas/propuesta-version.entity';
 import type {
   PublicationResult,
+  DeletionResult,
   ProposalSnapshot,
   PublicProposalResult,
   RevocationResult,
@@ -80,7 +82,11 @@ describe('Propuestas (e2e)', () => {
       memoryDatabase.adapters.createTypeormDataSource({
         type: 'postgres',
         entities: [ProposalEntity, ProposalVersionEntity, FirmProfileEntity],
-        migrations: [CreateProposals1786420000000, CreateFirmProfiles1786500000000],
+        migrations: [
+          CreateProposals1786420000000,
+          CreateFirmProfiles1786500000000,
+          AddProposalPublicationSlug1786600000000,
+        ],
         migrationsTableName: 'er_migrations',
         synchronize: false,
       });
@@ -140,7 +146,8 @@ describe('Propuestas (e2e)', () => {
 
     expect(published.proposalId).toBe(stored.id);
     expect(published.token).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    expect(published.path).toMatch(/^\/p\/[A-Za-z0-9_-]{32}$/);
+    expect(published.slug).toBe('vertice-energia');
+    expect(published.path).toBe('/portal/vertice-energia');
     expect(published.version).toBe(1);
     expect(published.status).toBe('published');
     expect(typeof published.publishedAt).toBe('string');
@@ -159,6 +166,15 @@ describe('Propuestas (e2e)', () => {
     });
     expect(publicProposal.proposal).not.toHaveProperty('id');
     expect(publicProposal.proposal.client).not.toHaveProperty('email');
+
+    const friendlyResponse = await request(app.getHttpServer())
+      .get(`/propuestas/portales/${published.slug}`)
+      .expect(200)
+      .expect('Cache-Control', 'no-store')
+      .expect('X-Robots-Tag', /noindex/);
+    expect((friendlyResponse.body as PublicProposalResult).code).toBe(
+      stored.code,
+    );
 
     const pdf = await request(app.getHttpServer())
       .get(`/propuestas/publicas/${published.token}/pdf`)
@@ -298,6 +314,57 @@ describe('Propuestas (e2e)', () => {
       .expect(404);
   });
 
+  it('resuelve colisiones de URL y permite eliminar una propuesta completa', async () => {
+    const repeatedCompany = {
+      ...proposalFixture(),
+      client: {
+        ...proposalFixture().client,
+        company: 'Cliente Repetido S.A.S.',
+      },
+    };
+    const first = (
+      await request(app.getHttpServer())
+        .post('/propuestas')
+        .send(repeatedCompany)
+        .expect(201)
+    ).body as StoredProposal;
+    const second = (
+      await request(app.getHttpServer())
+        .post('/propuestas')
+        .send(repeatedCompany)
+        .expect(201)
+    ).body as StoredProposal;
+
+    const firstPublication = (
+      await request(app.getHttpServer())
+        .post(`/propuestas/${first.id}/publicar`)
+        .send({})
+        .expect(201)
+    ).body as PublicationResult;
+    const secondPublication = (
+      await request(app.getHttpServer())
+        .post(`/propuestas/${second.id}/publicar`)
+        .send({})
+        .expect(201)
+    ).body as PublicationResult;
+
+    expect(firstPublication.slug).toBe('cliente-repetido');
+    expect(secondPublication.slug).toBe('cliente-repetido-2');
+
+    const deletion = (
+      await request(app.getHttpServer())
+        .delete(`/propuestas/${second.id}`)
+        .expect(200)
+    ).body as DeletionResult;
+    expect(deletion).toEqual({ proposalId: second.id, status: 'deleted' });
+    await request(app.getHttpServer())
+      .get(`/propuestas/${second.id}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/propuestas/portales/${secondPublication.slug}`)
+      .expect(404);
+  });
+
   it('responde 400 al publicar un borrador incompleto en vez de producir un error interno', async () => {
     const createdResponse = await request(app.getHttpServer())
       .post('/propuestas')
@@ -341,12 +408,17 @@ describe('Propuestas (e2e)', () => {
 
     expect(current.identity.name).toBe('ER Abogados');
     expect(current.team).toHaveLength(8);
-    expect(current.metrics.every((metric) => !metric.publicable && metric.value === null)).toBe(
-      true,
-    );
+    expect(
+      current.metrics.every(
+        (metric) => !metric.publicable && metric.value === null,
+      ),
+    ).toBe(true);
     expect(typeof current.updatedAt).toBe('string');
 
-    await request(app.getHttpServer()).put('/firma/perfil').send(current).expect(401);
+    await request(app.getHttpServer())
+      .put('/firma/perfil')
+      .send(current)
+      .expect(401);
 
     const unsupportedMetric = {
       ...current,

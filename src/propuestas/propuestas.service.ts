@@ -12,6 +12,7 @@ import { ProposalVersionEntity } from './propuesta-version.entity';
 import { getProposalReport, proposalPdfFileName } from './proposal-report';
 import {
   type ProposalPublication,
+  type DeletionResult,
   type ProposalSnapshot,
   type PublicationResult,
   type PublicProposalResult,
@@ -38,11 +39,16 @@ export class PropuestasService {
     const proposals = await this.proposals.find({
       order: { updatedAt: 'DESC' },
     });
+    for (const proposal of proposals) {
+      await this.ensurePublicationSlug(proposal);
+    }
     return proposals.map((proposal) => this.toStored(proposal));
   }
 
   async findOne(id: string): Promise<StoredProposal> {
-    return this.toStored(await this.findOneEntity(id));
+    const proposal = await this.findOneEntity(id);
+    await this.ensurePublicationSlug(proposal);
+    return this.toStored(proposal);
   }
 
   async create(input: ProposalSnapshot): Promise<StoredProposal> {
@@ -62,6 +68,7 @@ export class PropuestasService {
         proposal,
         publishedSnapshot: null,
         publicationToken: null,
+        publicationSlug: null,
         publicationStatus: null,
         publicationVersion: null,
         publishedAt: null,
@@ -116,7 +123,8 @@ export class PropuestasService {
       if (
         current.publication?.status === 'published' &&
         current.publication.version === current.proposal.version &&
-        current.publishedSnapshot
+        current.publishedSnapshot &&
+        entity.publicationSlug
       ) {
         return this.toPublicationResult(current);
       }
@@ -124,9 +132,16 @@ export class PropuestasService {
       const now = new Date();
       const token =
         entity.publicationToken ?? (await this.createPublicToken(proposals));
+      const slug =
+        entity.publicationSlug ??
+        (await this.createPublicSlug(
+          entity.proposal.client.company,
+          proposals,
+        ));
       entity.proposal = { ...current.proposal, status: 'publicada' };
       entity.publishedSnapshot = this.toPublicSnapshot(entity.proposal);
       entity.publicationToken = token;
+      entity.publicationSlug = slug;
       entity.publicationVersion = entity.proposal.version;
       entity.publicationStatus = 'published';
       entity.publishedAt = now;
@@ -163,6 +178,25 @@ export class PropuestasService {
       publishedAt: current.publication.publishedAt,
       proposal: current.publishedSnapshot,
     };
+  }
+
+  async findPublicBySlug(slug: string): Promise<PublicProposalResult> {
+    const current = await this.trackPublicAccess(
+      await this.findPublishedBySlug(slug),
+    );
+
+    return {
+      code: current.code,
+      version: current.publication.version,
+      publishedAt: current.publication.publishedAt,
+      proposal: current.publishedSnapshot,
+    };
+  }
+
+  async remove(id: string): Promise<DeletionResult> {
+    const entity = await this.findOneEntity(id);
+    await this.proposals.remove(entity);
+    return { proposalId: id, status: 'deleted' };
   }
 
   async publicPdf(
@@ -246,6 +280,7 @@ export class PropuestasService {
     const publication: ProposalPublication | undefined = hasPublication
       ? {
           token: entity.publicationToken!,
+          slug: entity.publicationSlug ?? undefined,
           version: entity.publicationVersion!,
           status: entity.publicationStatus!,
           publishedAt: entity.publishedAt!.toISOString(),
@@ -341,6 +376,21 @@ export class PropuestasService {
     return current as PublishedProposal;
   }
 
+  private async findPublishedBySlug(slug: string): Promise<PublishedProposal> {
+    const entity = await this.proposals.findOne({
+      where: { publicationSlug: slug, publicationStatus: 'published' },
+    });
+    const current = entity ? this.toStored(entity) : undefined;
+
+    if (!current?.publication || !current.publishedSnapshot) {
+      throw new NotFoundException(
+        'La experiencia compartida no existe o ya no está disponible.',
+      );
+    }
+
+    return current as PublishedProposal;
+  }
+
   private async trackPublicAccess(
     current: PublishedProposal,
   ): Promise<PublishedProposal> {
@@ -368,6 +418,38 @@ export class PropuestasService {
     return token;
   }
 
+  private async createPublicSlug(
+    company: string,
+    repository: Repository<ProposalEntity> = this.proposals,
+  ): Promise<string> {
+    const normalizedCompany = company
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-(?:s-a-s|sas|s-a|sa|ltda|limitada)$/g, '')
+      .slice(0, 80);
+    const base = normalizedCompany || 'propuesta';
+    let slug = base;
+    let suffix = 2;
+
+    while (await repository.exists({ where: { publicationSlug: slug } })) {
+      slug = `${base.slice(0, 80 - String(suffix).length - 1)}-${suffix}`;
+      suffix += 1;
+    }
+
+    return slug;
+  }
+
+  private async ensurePublicationSlug(entity: ProposalEntity): Promise<void> {
+    if (!entity.publicationToken || entity.publicationSlug) return;
+    entity.publicationSlug = await this.createPublicSlug(
+      entity.proposal.client.company,
+    );
+    await this.proposals.save(entity);
+  }
+
   private toPublicationResult(stored: StoredProposal): PublicationResult {
     if (!stored.publication || stored.publication.status !== 'published') {
       throw new NotFoundException(
@@ -378,7 +460,8 @@ export class PropuestasService {
     return {
       proposalId: stored.id,
       token: stored.publication.token,
-      path: `/p/${stored.publication.token}`,
+      slug: stored.publication.slug!,
+      path: `/portal/${stored.publication.slug}`,
       version: stored.publication.version,
       status: 'published',
       publishedAt: stored.publication.publishedAt,

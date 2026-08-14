@@ -6,7 +6,7 @@ API independiente en Nest para las soluciones de `app-erabogados`. Su primer mó
 
 1. Angular guarda el borrador interno.
 2. Nest valida el contenido y congela la versión que se va a compartir.
-3. La primera publicación crea un token aleatorio y las siguientes conservan el mismo enlace.
+3. La primera publicación crea un token de seguridad y un identificador legible por empresa; las siguientes conservan el mismo enlace.
 4. Editar el borrador no modifica la experiencia pública hasta que se publique otra vez.
 5. El payload público excluye el correo del cliente y el identificador interno.
 
@@ -22,7 +22,9 @@ GET    /propuestas/:id
 GET    /propuestas/:id/pdf
 POST   /propuestas/:id/publicar
 DELETE /propuestas/:id/publicacion
+DELETE /propuestas/:id
 
+GET    /propuestas/portales/:slug
 GET    /propuestas/publicas/:token
 GET    /propuestas/publicas/:token/pdf
 GET    /firma/perfil

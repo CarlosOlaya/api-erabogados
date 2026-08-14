@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  type DeletionResult,
   type PublicationResult,
   type ProposalSnapshot,
   type RevocationResult,
@@ -39,6 +40,11 @@ export class PropuestasController {
   @Delete(':id/publicacion')
   revoke(@Param('id') id: string): Promise<RevocationResult> {
     return this.propuestas.revoke(id);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string): Promise<DeletionResult> {
+    return this.propuestas.remove(id);
   }
 
   @Get(':id/pdf')

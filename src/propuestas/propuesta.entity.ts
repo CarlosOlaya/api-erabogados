@@ -22,6 +22,10 @@ import type {
   'publicationToken',
   'publicationStatus',
 ])
+@Index('IDX_proposals_publication_slug_lookup', [
+  'publicationSlug',
+  'publicationStatus',
+])
 export class ProposalEntity {
   @Column({ type: 'bigint', name: 'sequence_id', unique: true })
   @Generated('increment')
@@ -47,6 +51,15 @@ export class ProposalEntity {
     nullable: true,
   })
   publicationToken!: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 96,
+    name: 'publication_slug',
+    unique: true,
+    nullable: true,
+  })
+  publicationSlug!: string | null;
 
   @Column({
     type: 'varchar',
