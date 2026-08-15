@@ -66,6 +66,7 @@ const proposalFixture = (): ProposalSnapshot => ({
   additionalValueLabel: 'Valor adicional',
   additionalValue: '',
   conditions: 'El alcance definitivo se acuerda por escrito antes del inicio.',
+  clientLogos: ['grupo-cobra', 'veolia'],
 });
 
 describe('Propuestas (e2e)', () => {
@@ -214,6 +215,9 @@ describe('Propuestas (e2e)', () => {
     });
     expect(publicProposal.proposal).not.toHaveProperty('id');
     expect(publicProposal.proposal.client).not.toHaveProperty('email');
+    // El snapshot público se arma campo por campo: si alguien agrega un campo
+    // al modelo y olvida incluirlo aquí, el cliente nunca lo ve.
+    expect(publicProposal.proposal.clientLogos).toEqual(['grupo-cobra', 'veolia']);
 
     const friendlyResponse = await request(app.getHttpServer())
       .get(`/propuestas/portales/${published.slug}`)

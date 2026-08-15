@@ -100,6 +100,8 @@ export interface ProposalSnapshot {
   additionalValueLabel: string;
   additionalValue: string;
   conditions: string;
+  /** Ids de `CLIENT_LOGOS` a mostrar como prueba en la escena de método. */
+  clientLogos: string[];
 }
 
 export interface StoredProposal {

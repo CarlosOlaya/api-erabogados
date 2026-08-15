@@ -401,6 +401,9 @@ export class PropuestasService {
       additionalValueLabel: proposal.additionalValueLabel || 'Valor adicional',
       additionalValue: proposal.additionalValue || '',
       conditions: proposal.conditions,
+      // El snapshot se arma campo por campo: sin esta línea los clientes
+      // elegidos como respaldo no llegarían nunca al portal publicado.
+      clientLogos: proposal.clientLogos ?? [],
     };
   }
 
