@@ -1,8 +1,12 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Railway termina TLS en su proxy: sin esto, `x-forwarded-for` se ignora y
+  // el limitador de tasa vería una sola IP para todo el tráfico.
+  app.set('trust proxy', 1);
   const localOrigins = ['http://localhost:4200', 'http://127.0.0.1:4200'];
   const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
     .split(',')

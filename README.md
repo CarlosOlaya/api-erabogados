@@ -14,6 +14,8 @@ El PDF generado con `pdfmake` 0.2.18 sigue disponible como resumen para archivo 
 
 ## Endpoints
 
+Las rutas del estudio exigen `Authorization: Bearer <ER_ADMIN_TOKEN>`:
+
 ```text
 POST   /propuestas
 PATCH  /propuestas/:id
@@ -23,16 +25,38 @@ GET    /propuestas/:id/pdf
 POST   /propuestas/:id/publicar
 DELETE /propuestas/:id/publicacion
 DELETE /propuestas/:id
+PUT    /firma/perfil
+```
 
-GET    /propuestas/portales/:slug
+Las del portal del cliente son públicas y están limitadas a 30 peticiones por minuto y por IP,
+para que nadie pueda recorrer slugs en masa buscando a qué empresas se les está presentando:
+
+```text
+GET    /propuestas/portales/:slug          · ?interno=1 no cuenta la visita
+GET    /propuestas/portales/:slug/pdf
 GET    /propuestas/publicas/:token
 GET    /propuestas/publicas/:token/pdf
 GET    /firma/perfil
-PUT    /firma/perfil
 GET    /health
 ```
 
-Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, nofollow, noarchive`. Las rutas internas todavía requieren autenticación antes de un despliegue productivo.
+Las rutas públicas envían `Cache-Control: no-store` y `X-Robots-Tag: noindex, nofollow, noarchive`.
+
+Si `ER_ADMIN_TOKEN` no está configurada, la API responde `503` a las rutas del estudio: falla
+cerrado, nunca las deja abiertas.
+
+## Enlaces del portal
+
+El slug conserva el nombre de la empresa y añade un sufijo aleatorio
+(`sodexo-colombia-k4m2xq7p`): el cliente reconoce su enlace, pero nadie puede deducirlo desde el
+nombre de la empresa. La migración `RandomizePublicationSlug` aplica el sufijo a los enlaces
+anteriores, **lo que invalida los ya enviados**: hay que volver a compartirlos.
+
+## Aviso de apertura
+
+Con `PORTAL_NOTIFY_WEBHOOK` configurada, la API envía un JSON cuando un cliente abre su portal
+—primera apertura, o reapertura tras seis horas de silencio—. Sirve cualquier webhook que reciba
+JSON: Slack, Make, n8n. Sin la variable, no se envía nada.
 
 ## Registro maestro de la firma
 

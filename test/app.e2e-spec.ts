@@ -1,7 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
-import { newDb } from 'pg-mem';
+import { createHash } from 'node:crypto';
+import { DataType, newDb } from 'pg-mem';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
@@ -9,6 +10,7 @@ import { AppModule } from './../src/app.module';
 import { CreateProposals1786420000000 } from './../src/database/migrations/1786420000000-CreateProposals';
 import { CreateFirmProfiles1786500000000 } from './../src/database/migrations/1786500000000-CreateFirmProfiles';
 import { AddProposalPublicationSlug1786600000000 } from './../src/database/migrations/1786600000000-AddProposalPublicationSlug';
+import { RandomizePublicationSlug1786700000000 } from './../src/database/migrations/1786700000000-RandomizePublicationSlug';
 import { FirmProfileEntity } from './../src/firma/firma.entity';
 import { ProposalEntity } from './../src/propuestas/propuesta.entity';
 import { ProposalVersionEntity } from './../src/propuestas/propuesta-version.entity';
@@ -20,6 +22,8 @@ import type {
   RevocationResult,
   StoredProposal,
 } from './../src/propuestas/propuesta.types';
+
+const ADMIN_TOKEN = 'test-firm-token';
 
 const proposalFixture = (): ProposalSnapshot => ({
   id: '',
@@ -68,6 +72,25 @@ describe('Propuestas (e2e)', () => {
   let app: INestApplication<App>;
   let database: DataSource;
 
+  /**
+   * Las rutas del estudio exigen la clave compartida. Las del portal del
+   * cliente no: por eso las llamadas públicas de esta suite siguen usando
+   * `request(...)` directamente.
+   */
+  const studio = () => {
+    const server = app.getHttpServer() as App;
+    const authorize = <T extends { set: (field: string, value: string) => T }>(
+      test: T,
+    ): T => test.set('Authorization', `Bearer ${ADMIN_TOKEN}`);
+
+    return {
+      get: (url: string) => authorize(request(server).get(url)),
+      post: (url: string) => authorize(request(server).post(url)),
+      patch: (url: string) => authorize(request(server).patch(url)),
+      delete: (url: string) => authorize(request(server).delete(url)),
+    };
+  };
+
   beforeAll(async () => {
     const memoryDatabase = newDb({ autoCreateForeignKeyIndices: true });
     memoryDatabase.public.registerFunction({
@@ -78,6 +101,29 @@ describe('Propuestas (e2e)', () => {
       name: 'version',
       implementation: () => 'PostgreSQL 16 test',
     });
+    // pg-mem trae muy pocas funciones nativas. Estas las usa la migración que
+    // aleatoriza los slugs y existen de serie en el Postgres real.
+    memoryDatabase.public.registerFunction({
+      name: 'substr',
+      args: [DataType.text, DataType.integer, DataType.integer],
+      returns: DataType.text,
+      implementation: (value: string, from: number, length: number) =>
+        (value ?? '').substring(from - 1, from - 1 + length),
+    });
+    memoryDatabase.public.registerFunction({
+      name: 'md5',
+      args: [DataType.text],
+      returns: DataType.text,
+      implementation: (value: string) =>
+        createHash('md5').update(value ?? '').digest('hex'),
+    });
+    memoryDatabase.public.registerFunction({
+      name: 'random',
+      returns: DataType.float,
+      // `impure` evita que pg-mem memorice un único valor para toda la consulta.
+      impure: true,
+      implementation: () => Math.random(),
+    });
     const memoryDataSource: unknown =
       memoryDatabase.adapters.createTypeormDataSource({
         type: 'postgres',
@@ -86,6 +132,7 @@ describe('Propuestas (e2e)', () => {
           CreateProposals1786420000000,
           CreateFirmProfiles1786500000000,
           AddProposalPublicationSlug1786600000000,
+          RandomizePublicationSlug1786700000000,
         ],
         migrationsTableName: 'er_migrations',
         synchronize: false,
@@ -94,7 +141,7 @@ describe('Propuestas (e2e)', () => {
     await database.initialize();
     await database.runMigrations();
 
-    process.env.ER_ADMIN_TOKEN = 'test-firm-token';
+    process.env.ER_ADMIN_TOKEN = ADMIN_TOKEN;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -107,7 +154,7 @@ describe('Propuestas (e2e)', () => {
   });
 
   it('guarda un snapshot y entrega su PDF interno', async () => {
-    const created = await request(app.getHttpServer())
+    const created = await studio()
       .post('/propuestas')
       .send(proposalFixture())
       .expect(201);
@@ -122,7 +169,7 @@ describe('Propuestas (e2e)', () => {
     });
     expect(persisted?.proposal.client.company).toBe('Vértice Energía S.A.S.');
 
-    const pdf = await request(app.getHttpServer())
+    const pdf = await studio()
       .get(`/propuestas/${stored.id}/pdf`)
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
@@ -132,13 +179,13 @@ describe('Propuestas (e2e)', () => {
   }, 20_000);
 
   it('publica una versión segura y entrega el resumen PDF desde ese snapshot', async () => {
-    const created = await request(app.getHttpServer())
+    const created = await studio()
       .post('/propuestas')
       .send(proposalFixture())
       .expect(201);
     const stored = created.body as StoredProposal;
 
-    const publishedResponse = await request(app.getHttpServer())
+    const publishedResponse = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(201);
@@ -146,8 +193,9 @@ describe('Propuestas (e2e)', () => {
 
     expect(published.proposalId).toBe(stored.id);
     expect(published.token).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    expect(published.slug).toBe('vertice-energia');
-    expect(published.path).toBe('/portal/vertice-energia');
+    // El nombre sigue siendo legible, pero el sufijo aleatorio impide adivinarlo.
+    expect(published.slug).toMatch(/^vertice-energia-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
+    expect(published.path).toBe(`/portal/${published.slug}`);
     expect(published.version).toBe(1);
     expect(published.status).toBe('published');
     expect(typeof published.publishedAt).toBe('string');
@@ -185,23 +233,34 @@ describe('Propuestas (e2e)', () => {
 
     expect(pdf.headers['content-disposition']).toContain('attachment;');
     expect(Number(pdf.headers['content-length'])).toBeGreaterThan(100_000);
+
+    // El cliente llega por el enlace legible y no conoce el token: el comité
+    // debe poder descargar el PDF desde ahí.
+    const pdfPorSlug = await request(app.getHttpServer())
+      .get(`/propuestas/portales/${published.slug}/pdf`)
+      .expect(200)
+      .expect('Content-Type', /application\/pdf/)
+      .expect('X-Robots-Tag', /noindex/);
+
+    expect(pdfPorSlug.headers['content-disposition']).toContain('attachment;');
+    expect(Number(pdfPorSlug.headers['content-length'])).toBeGreaterThan(100_000);
   }, 20_000);
 
   it('mantiene el enlace estable y el snapshot congelado hasta republicar', async () => {
     const original = proposalFixture();
-    const createdResponse = await request(app.getHttpServer())
+    const createdResponse = await studio()
       .post('/propuestas')
       .send(original)
       .expect(201);
     const stored = createdResponse.body as StoredProposal;
 
-    const firstPublishResponse = await request(app.getHttpServer())
+    const firstPublishResponse = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(201);
     const firstPublication = firstPublishResponse.body as PublicationResult;
 
-    const idempotentResponse = await request(app.getHttpServer())
+    const idempotentResponse = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(201);
@@ -216,7 +275,7 @@ describe('Propuestas (e2e)', () => {
         headline: 'Nueva versión aprobada por el comité directivo.',
       },
     };
-    const updatedResponse = await request(app.getHttpServer())
+    const updatedResponse = await studio()
       .patch(`/propuestas/${stored.id}`)
       .send(changed)
       .expect(200);
@@ -224,7 +283,7 @@ describe('Propuestas (e2e)', () => {
     expect(updated.proposal.version).toBe(2);
     expect(updated.proposal.status).toBe('lista');
 
-    const savedAgainResponse = await request(app.getHttpServer())
+    const savedAgainResponse = await studio()
       .patch(`/propuestas/${stored.id}`)
       .send({
         ...changed,
@@ -247,7 +306,7 @@ describe('Propuestas (e2e)', () => {
       original.narrative.headline,
     );
 
-    const secondPublishResponse = await request(app.getHttpServer())
+    const secondPublishResponse = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(201);
@@ -281,18 +340,18 @@ describe('Propuestas (e2e)', () => {
   });
 
   it('revoca el acceso público de forma idempotente', async () => {
-    const createdResponse = await request(app.getHttpServer())
+    const createdResponse = await studio()
       .post('/propuestas')
       .send(proposalFixture())
       .expect(201);
     const stored = createdResponse.body as StoredProposal;
-    const publishedResponse = await request(app.getHttpServer())
+    const publishedResponse = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(201);
     const published = publishedResponse.body as PublicationResult;
 
-    const revokedResponse = await request(app.getHttpServer())
+    const revokedResponse = await studio()
       .delete(`/propuestas/${stored.id}/publicacion`)
       .expect(200);
     const revoked = revokedResponse.body as RevocationResult;
@@ -301,7 +360,7 @@ describe('Propuestas (e2e)', () => {
     expect(revoked.status).toBe('revoked');
     expect(typeof revoked.revokedAt).toBe('string');
 
-    const repeatedResponse = await request(app.getHttpServer())
+    const repeatedResponse = await studio()
       .delete(`/propuestas/${stored.id}/publicacion`)
       .expect(200);
     expect(repeatedResponse.body as RevocationResult).toEqual(revoked);
@@ -323,41 +382,43 @@ describe('Propuestas (e2e)', () => {
       },
     };
     const first = (
-      await request(app.getHttpServer())
+      await studio()
         .post('/propuestas')
         .send(repeatedCompany)
         .expect(201)
     ).body as StoredProposal;
     const second = (
-      await request(app.getHttpServer())
+      await studio()
         .post('/propuestas')
         .send(repeatedCompany)
         .expect(201)
     ).body as StoredProposal;
 
     const firstPublication = (
-      await request(app.getHttpServer())
+      await studio()
         .post(`/propuestas/${first.id}/publicar`)
         .send({})
         .expect(201)
     ).body as PublicationResult;
     const secondPublication = (
-      await request(app.getHttpServer())
+      await studio()
         .post(`/propuestas/${second.id}/publicar`)
         .send({})
         .expect(201)
     ).body as PublicationResult;
 
-    expect(firstPublication.slug).toBe('cliente-repetido');
-    expect(secondPublication.slug).toBe('cliente-repetido-2');
+    // Dos propuestas a la misma empresa comparten el nombre pero nunca el enlace.
+    expect(firstPublication.slug).toMatch(/^cliente-repetido-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
+    expect(secondPublication.slug).toMatch(/^cliente-repetido-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
+    expect(secondPublication.slug).not.toBe(firstPublication.slug);
 
     const deletion = (
-      await request(app.getHttpServer())
+      await studio()
         .delete(`/propuestas/${second.id}`)
         .expect(200)
     ).body as DeletionResult;
     expect(deletion).toEqual({ proposalId: second.id, status: 'deleted' });
-    await request(app.getHttpServer())
+    await studio()
       .get(`/propuestas/${second.id}`)
       .expect(404);
     await request(app.getHttpServer())
@@ -366,19 +427,47 @@ describe('Propuestas (e2e)', () => {
   });
 
   it('responde 400 al publicar un borrador incompleto en vez de producir un error interno', async () => {
-    const createdResponse = await request(app.getHttpServer())
+    const createdResponse = await studio()
       .post('/propuestas')
       .send({})
       .expect(201);
     const stored = createdResponse.body as StoredProposal;
 
-    const response = await request(app.getHttpServer())
+    const response = await studio()
       .post(`/propuestas/${stored.id}/publicar`)
       .send({})
       .expect(400);
 
     const error = response.body as { message: string };
     expect(error.message).toContain('Complete empresa');
+  });
+
+  it('cierra el estudio a quien no trae la clave y deja abierto el portal', async () => {
+    const server = app.getHttpServer();
+
+    // Sin clave: nada de la cartera es accesible.
+    await request(server).get('/propuestas').expect(401);
+    await request(server).post('/propuestas').send(proposalFixture()).expect(401);
+
+    // Con una clave equivocada tampoco.
+    await request(server)
+      .get('/propuestas')
+      .set('Authorization', 'Bearer clave-incorrecta')
+      .expect(401);
+
+    // El cliente abre su portal sin clave alguna.
+    const stored = (
+      await studio().post('/propuestas').send(proposalFixture()).expect(201)
+    ).body as StoredProposal;
+    const published = (
+      await studio().post(`/propuestas/${stored.id}/publicar`).send({}).expect(201)
+    ).body as PublicationResult;
+
+    await request(server).get(`/propuestas/portales/${published.slug}`).expect(200);
+    await request(server).get(`/propuestas/publicas/${published.token}`).expect(200);
+
+    // Y borrar sigue exigiendo la clave.
+    await request(server).delete(`/propuestas/${stored.id}`).expect(401);
   });
 
   it('expone un control de salud para Railway', async () => {
@@ -435,7 +524,7 @@ describe('Propuestas (e2e)', () => {
     };
     await request(app.getHttpServer())
       .put('/firma/perfil')
-      .set('Authorization', 'Bearer test-firm-token')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
       .send(unsupportedMetric)
       .expect(400);
 
@@ -445,7 +534,7 @@ describe('Propuestas (e2e)', () => {
     };
     const updatedResponse = await request(app.getHttpServer())
       .put('/firma/perfil')
-      .set('Authorization', 'Bearer test-firm-token')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
       .send(next)
       .expect(200);
     const updated = updatedResponse.body as typeof current;

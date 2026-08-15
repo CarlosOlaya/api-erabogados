@@ -9,14 +9,17 @@ import {
   PropuestasPublicasController,
 } from './propuestas-publicas.controller';
 import { PropuestasService } from './propuestas.service';
+import { PortalNotifier } from './portal-notifier.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ProposalEntity, ProposalVersionEntity])],
+  // Las públicas van primero: sus rutas son más específicas que `propuestas/:id`
+  // y así el emparejamiento no depende de la forma del parámetro.
   controllers: [
-    PropuestasController,
     PropuestasPublicasController,
     PortalesPublicosController,
+    PropuestasController,
   ],
-  providers: [PropuestasService, PdfPrinterService],
+  providers: [PropuestasService, PdfPrinterService, PortalNotifier],
 })
 export class PropuestasModule {}

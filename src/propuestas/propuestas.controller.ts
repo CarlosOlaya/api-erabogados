@@ -7,8 +7,10 @@ import {
   Patch,
   Post,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { AdminTokenGuard } from '../common/admin-token.guard';
 import {
   type DeletionResult,
   type PublicationResult,
@@ -19,6 +21,7 @@ import {
 import { PropuestasService } from './propuestas.service';
 
 @Controller('propuestas')
+@UseGuards(AdminTokenGuard)
 export class PropuestasController {
   constructor(private readonly propuestas: PropuestasService) {}
 

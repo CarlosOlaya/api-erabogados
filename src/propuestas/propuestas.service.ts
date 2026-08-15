@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource, Repository } from 'typeorm';
 import { PdfPrinterService } from '../common/pdf-printer.service';
+import { PortalNotifier } from './portal-notifier.service';
 import { ProposalEntity } from './propuesta.entity';
 import { ProposalVersionEntity } from './propuesta-version.entity';
 import { getProposalReport, proposalPdfFileName } from './proposal-report';
@@ -26,6 +27,25 @@ type PublishedProposal = StoredProposal & {
   publishedSnapshot: PublicProposalSnapshot;
 };
 
+/** Deja margen para el guion y el sufijo dentro de `varchar(96)`. */
+const SLUG_BASE_MAX = 80;
+const SLUG_SUFFIX_LENGTH = 8;
+/** Sin vocales ni caracteres ambiguos: no forma palabras y se dicta sin error. */
+const SLUG_ALPHABET = '23456789bcdfghjkmnpqrstvwxz';
+
+/**
+ * 27^8 ≈ 2.8·10^11 combinaciones. Con el limitador de tasa del portal, recorrer
+ * el espacio de slugs deja de ser viable.
+ */
+const randomSlugSuffix = (): string => {
+  const bytes = randomBytes(SLUG_SUFFIX_LENGTH);
+  let suffix = '';
+  for (let index = 0; index < SLUG_SUFFIX_LENGTH; index += 1) {
+    suffix += SLUG_ALPHABET[bytes[index] % SLUG_ALPHABET.length];
+  }
+  return suffix;
+};
+
 @Injectable()
 export class PropuestasService {
   constructor(
@@ -33,6 +53,7 @@ export class PropuestasService {
     private readonly proposals: Repository<ProposalEntity>,
     private readonly database: DataSource,
     private readonly pdfPrinter: PdfPrinterService,
+    private readonly notifier: PortalNotifier,
   ) {}
 
   async findAll(): Promise<StoredProposal[]> {
@@ -167,9 +188,13 @@ export class PropuestasService {
     });
   }
 
-  async findPublic(token: string): Promise<PublicProposalResult> {
+  async findPublic(
+    token: string,
+    internal = false,
+  ): Promise<PublicProposalResult> {
     const current = await this.trackPublicAccess(
       await this.findPublished(token),
+      internal,
     );
 
     return {
@@ -180,9 +205,13 @@ export class PropuestasService {
     };
   }
 
-  async findPublicBySlug(slug: string): Promise<PublicProposalResult> {
+  async findPublicBySlug(
+    slug: string,
+    internal = false,
+  ): Promise<PublicProposalResult> {
     const current = await this.trackPublicAccess(
       await this.findPublishedBySlug(slug),
+      internal,
     );
 
     return {
@@ -204,6 +233,20 @@ export class PropuestasService {
   ): Promise<{ buffer: Buffer; filename: string }> {
     const current = await this.trackPublicAccess(
       await this.findPublished(token),
+    );
+    return this.renderPdf(this.toReportSnapshot(current));
+  }
+
+  /**
+   * El cliente que abre el portal por su enlace legible no conoce el token, y
+   * los comités siguen decidiendo sobre un PDF. Sin esta ruta, reenviar la
+   * propuesta al formato que la organización realmente usa era imposible.
+   */
+  async publicPdfBySlug(
+    slug: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const current = await this.trackPublicAccess(
+      await this.findPublishedBySlug(slug),
     );
     return this.renderPdf(this.toReportSnapshot(current));
   }
@@ -391,18 +434,42 @@ export class PropuestasService {
     return current as PublishedProposal;
   }
 
+  /**
+   * `internal` marca las aperturas del propio equipo desde el estudio. Antes
+   * se contaban igual que las del cliente, así que el número que servía para
+   * decidir cuándo llamar estaba contaminado desde la primera propuesta.
+   */
   private async trackPublicAccess(
     current: PublishedProposal,
+    internal = false,
   ): Promise<PublishedProposal> {
+    if (internal) return current;
+
     const now = new Date();
+    const previousViewAt = current.publication.lastViewedAt
+      ? new Date(current.publication.lastViewedAt)
+      : null;
+    const viewCount = current.publication.viewCount + 1;
+
     await this.proposals.increment({ id: current.id }, 'viewCount', 1);
     await this.proposals.update({ id: current.id }, { lastViewedAt: now });
+
+    if (this.notifier.shouldNotify(previousViewAt)) {
+      this.notifier.notify({
+        company: current.proposal.client.company,
+        recipient: current.proposal.client.recipient,
+        code: current.code,
+        version: current.publication.version,
+        viewCount,
+        isFirstView: !previousViewAt,
+      });
+    }
 
     return {
       ...current,
       publication: {
         ...current.publication,
-        viewCount: current.publication.viewCount + 1,
+        viewCount,
         lastViewedAt: now.toISOString(),
       },
     };
@@ -418,6 +485,14 @@ export class PropuestasService {
     return token;
   }
 
+  /**
+   * El enlace del portal conserva el nombre de la empresa porque el cliente lo
+   * ve y lo reenv\u00eda: `sodexo-colombia-k4m2xq7p` se reconoce, `a7f3k2m1` no.
+   *
+   * El sufijo aleatorio es lo que impide adivinarlo. Sin \u00e9l, cualquiera que
+   * sepa a qui\u00e9n le estamos presentando reconstruye la URL desde el nombre de
+   * la empresa y lee la propuesta completa, honorarios incluidos.
+   */
   private async createPublicSlug(
     company: string,
     repository: Repository<ProposalEntity> = this.proposals,
@@ -429,15 +504,13 @@ export class PropuestasService {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .replace(/-(?:s-a-s|sas|s-a|sa|ltda|limitada)$/g, '')
-      .slice(0, 80);
+      .slice(0, SLUG_BASE_MAX);
     const base = normalizedCompany || 'propuesta';
-    let slug = base;
-    let suffix = 2;
 
-    while (await repository.exists({ where: { publicationSlug: slug } })) {
-      slug = `${base.slice(0, 80 - String(suffix).length - 1)}-${suffix}`;
-      suffix += 1;
-    }
+    let slug: string;
+    do {
+      slug = `${base}-${randomSlugSuffix()}`;
+    } while (await repository.exists({ where: { publicationSlug: slug } }));
 
     return slug;
   }
