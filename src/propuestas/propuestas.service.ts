@@ -361,7 +361,6 @@ export class PropuestasService {
       !this.isNonBlank(proposal.client?.recipient) ||
       !this.isNonBlank(proposal.context) ||
       !this.isNonBlank(proposal.narrative?.headline) ||
-      !this.isNonBlank(proposal.narrative?.valueStatement) ||
       !this.isNonBlank(proposal.narrative?.decision) ||
       !this.isNonBlank(proposal.scope) ||
       !this.isNonBlank(proposal.strategy) ||

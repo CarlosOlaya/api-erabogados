@@ -39,8 +39,6 @@ const proposalFixture = (): ProposalSnapshot => ({
     'Acompañamiento preventivo y contractual para una operación de energía.',
   narrative: {
     headline: 'Una ruta jurídica para avanzar con control y continuidad.',
-    valueStatement:
-      'Integramos las decisiones jurídicas que sostienen la operación y reducen exposición.',
     decision:
       'Priorizar riesgos, responsables y decisiones críticas para la dirección.',
   },
@@ -293,7 +291,7 @@ describe('Propuestas (e2e)', () => {
         ...changed,
         narrative: {
           ...changed.narrative,
-          valueStatement: 'Segundo guardado de la misma revisión interna.',
+          decision: 'Segundo guardado de la misma revisión interna.',
         },
       })
       .expect(200);

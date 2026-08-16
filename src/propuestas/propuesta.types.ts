@@ -87,7 +87,6 @@ export interface ProposalSnapshot {
   context: string;
   narrative: {
     headline: string;
-    valueStatement: string;
     decision: string;
   };
   areas: AreaSelection;
