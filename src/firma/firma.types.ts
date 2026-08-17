@@ -8,16 +8,48 @@ export interface FirmAddress {
   country: string;
 }
 
+/**
+ * Identificador del frente integrado al que pertenece un área.
+ *
+ * Los frentes no reemplazan a las áreas: son la perspectiva desde la que se
+ * mira una misma decisión empresarial. Una operación rara vez es «un asunto
+ * contractual» a secas; es un acuerdo que además tiene un órgano que lo
+ * aprueba, una autoridad que lo revisa y un patrimonio que lo respalda.
+ *
+ * El litigio no está en esta lista a propósito: no es un frente más, sino la
+ * cara defensiva que todo frente tiene. Por eso cada área declara qué previene
+ * y cómo se defiende, en lugar de existir un frente «litigioso» separado del
+ * trabajo preventivo.
+ */
+export type FirmFrontId = 'contractual' | 'corporativo' | 'regulatorio' | 'patrimonial';
+
+export interface FirmFront {
+  id: FirmFrontId;
+  number: string;
+  /** Nombre corto, el que se usa como rótulo. */
+  label: string;
+  /** Qué mira este frente, en una línea. */
+  title: string;
+  /** Cuándo se activa: «cuando lo que está en juego es…». */
+  atStake: string;
+}
+
 export interface FirmPracticeArea {
   id: string;
   number: string;
   label: string;
   title: string;
   description: string;
+  /** Frente integrado desde el que se aborda esta materia. */
+  front: FirmFrontId;
   portal: {
     businessRisk: string;
     intervention: string;
     decisionValue: string;
+    /** Qué se hace antes de que el conflicto exista. */
+    prevention: string;
+    /** Cómo se sostiene la posición si termina discutida. */
+    defense: string;
   };
 }
 
@@ -71,6 +103,7 @@ export interface FirmProfileInput {
       lines: string[];
     }>;
   };
+  fronts: FirmFront[];
   practiceAreas: FirmPracticeArea[];
   team: FirmTeamMember[];
   metrics: FirmMetric[];
