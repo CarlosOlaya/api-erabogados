@@ -46,26 +46,55 @@ export const INITIAL_FIRM_PROFILE = {
       },
     ],
   },
+  /*
+    Los frentes, con la redacción que entregó el cliente.
+
+    El orden es el suyo —contractual, corporativo, patrimonial— y el
+    regulatorio cierra la serie. `prevention`/`defense` viven aquí y no solo
+    en cada materia porque prevenir→defender es la tesis de la firma, no un
+    atributo de una especialidad.
+  */
   fronts: [
     {
-      id: 'contractual', number: '01', label: 'Contractual',
-      title: 'Lo que la empresa promete y lo que le prometen.',
+      id: 'contractual', number: '01', label: 'Arquitectura contractual',
+      title: 'Los compromisos que sostienen una decisión empresarial.',
       atStake: 'Cuando lo que está en juego es un acuerdo: qué se prometió, en qué condiciones y qué ocurre si no se cumple.',
+      description: 'Estructuramos acuerdos que distribuyen riesgos, asignan responsabilidades y anticipan escenarios de conflicto para dar solidez a cada decisión.',
+      prevention: 'Construimos decisiones respaldadas por reglas claras, una adecuada distribución de riesgos y mecanismos que anticipan escenarios de tensión.',
+      defense: 'Cuando una decisión es cuestionada, cuenta desde su origen con la estructura y el respaldo necesarios para sostenerse.',
+      primaryDiscipline: 'Derecho Contractual',
     },
     {
-      id: 'corporativo', number: '02', label: 'Corporativo',
-      title: 'Quién decide y con qué respaldo.',
+      id: 'corporativo', number: '02', label: 'Gobierno corporativo',
+      title: 'Quién decide, con qué autoridad y con qué respaldo.',
       atStake: 'Cuando lo que está en juego es la decisión societaria: quién tenía la facultad, por qué órgano y con qué trazabilidad.',
+      description: 'Fortalecemos la legitimidad de las decisiones societarias mediante estructuras de gobierno, reglas de funcionamiento y trazabilidad.',
+      prevention: 'Definimos competencias, procedimientos y soportes que reducen contingencias y fortalecen la toma de decisiones.',
+      defense: 'Respaldamos la validez de las decisiones cuando son cuestionadas por socios, administradores, autoridades o terceros.',
+      primaryDiscipline: 'Corporativo y Societario',
     },
     {
-      id: 'regulatorio', number: '03', label: 'Regulatorio',
-      title: 'Lo que el Estado exige, revisa o sanciona.',
-      atStake: 'Cuando lo que está en juego es la relación con una autoridad: términos, competencia y carga de la prueba.',
-    },
-    {
-      id: 'patrimonial', number: '04', label: 'Patrimonial',
-      title: 'Los activos y el daño que puede alcanzarlos.',
+      id: 'patrimonial', number: '03', label: 'Protección patrimonial',
+      title: 'Proteger el patrimonio antes de tener que recuperarlo.',
       atStake: 'Cuando lo que está en juego es el patrimonio: el activo, el daño, la cobertura y la recuperación.',
+      description: 'Diseñamos estrategias para preservar activos, gestionar contingencias y fortalecer la capacidad de respuesta frente a reclamaciones.',
+      prevention: 'Identificamos riesgos y estructuramos mecanismos de protección que reducen la exposición jurídica y económica.',
+      defense: 'Cuando el patrimonio entra en discusión, construimos una defensa sólida sustentada en responsabilidad, evidencia y valoración del daño.',
+      primaryDiscipline: 'Responsabilidad Civil, Seguros y Reaseguros',
+    },
+    /*
+      Este frente no venía en la entrega del cliente —su documento cubría los
+      tres anteriores— y está redactado aquí siguiendo esa misma estructura.
+      Pendiente de su visto bueno.
+    */
+    {
+      id: 'regulatorio', number: '04', label: 'Cumplimiento regulatorio',
+      title: 'Lo que una autoridad puede exigir, revisar o sancionar.',
+      atStake: 'Cuando lo que está en juego es la relación con una autoridad: términos, competencia y carga de la prueba.',
+      description: 'Ordenamos la relación con autoridades administrativas, tributarias, fiscales y laborales para que una actuación no comprometa la continuidad de la operación.',
+      prevention: 'Anticipamos términos, competencias y soportes probatorios para que una revisión encuentre la decisión ya documentada.',
+      defense: 'Cuando la actuación ya está abierta, sostenemos la posición de la empresa con la trazabilidad construida desde el origen.',
+      primaryDiscipline: 'Administrativo, Tributario, Fiscal y Laboral',
     },
   ],
   practiceAreas: [

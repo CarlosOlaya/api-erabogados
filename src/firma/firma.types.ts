@@ -32,6 +32,17 @@ export interface FirmFront {
   title: string;
   /** Cuándo se activa: «cuando lo que está en juego es…». */
   atStake: string;
+  /** Qué hace la firma desde este frente. */
+  description: string;
+  /**
+   * Las dos caras del frente. Viven aquí, y no solo en cada materia, porque
+   * prevenir/defender es la tesis de la firma —no un atributo de una
+   * especialidad—: el mismo frente responde antes y después del conflicto.
+   */
+  prevention: string;
+  defense: string;
+  /** La disciplina que encabeza el frente, para nombrarlo en términos jurídicos. */
+  primaryDiscipline: string;
 }
 
 export interface FirmPracticeArea {
