@@ -192,8 +192,7 @@ describe('Propuestas (e2e)', () => {
 
     expect(published.proposalId).toBe(stored.id);
     expect(published.token).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    // El nombre sigue siendo legible, pero el sufijo aleatorio impide adivinarlo.
-    expect(published.slug).toMatch(/^vertice-energia-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
+    expect(published.slug).toBe('vertice-energia');
     expect(published.path).toBe(`/portal/${published.slug}`);
     expect(published.version).toBe(1);
     expect(published.status).toBe('published');
@@ -409,9 +408,9 @@ describe('Propuestas (e2e)', () => {
         .expect(201)
     ).body as PublicationResult;
 
-    // Dos propuestas a la misma empresa comparten el nombre pero nunca el enlace.
-    expect(firstPublication.slug).toMatch(/^cliente-repetido-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
-    expect(secondPublication.slug).toMatch(/^cliente-repetido-[23456789bcdfghjkmnpqrstvwxz]{8}$/);
+    // La primera usa el nombre limpio; las siguientes reciben solo un ordinal.
+    expect(firstPublication.slug).toBe('cliente-repetido');
+    expect(secondPublication.slug).toBe('cliente-repetido-2');
     expect(secondPublication.slug).not.toBe(firstPublication.slug);
 
     const deletion = (

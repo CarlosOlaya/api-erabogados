@@ -27,24 +27,8 @@ type PublishedProposal = StoredProposal & {
   publishedSnapshot: PublicProposalSnapshot;
 };
 
-/** Deja margen para el guion y el sufijo dentro de `varchar(96)`. */
+/** Longitud máxima del nombre normalizado dentro de `varchar(96)`. */
 const SLUG_BASE_MAX = 80;
-const SLUG_SUFFIX_LENGTH = 8;
-/** Sin vocales ni caracteres ambiguos: no forma palabras y se dicta sin error. */
-const SLUG_ALPHABET = '23456789bcdfghjkmnpqrstvwxz';
-
-/**
- * 27^8 ≈ 2.8·10^11 combinaciones. Con el limitador de tasa del portal, recorrer
- * el espacio de slugs deja de ser viable.
- */
-const randomSlugSuffix = (): string => {
-  const bytes = randomBytes(SLUG_SUFFIX_LENGTH);
-  let suffix = '';
-  for (let index = 0; index < SLUG_SUFFIX_LENGTH; index += 1) {
-    suffix += SLUG_ALPHABET[bytes[index] % SLUG_ALPHABET.length];
-  }
-  return suffix;
-};
 
 @Injectable()
 export class PropuestasService {
@@ -487,14 +471,7 @@ export class PropuestasService {
     return token;
   }
 
-  /**
-   * El enlace del portal conserva el nombre de la empresa porque el cliente lo
-   * ve y lo reenv\u00eda: `sodexo-colombia-k4m2xq7p` se reconoce, `a7f3k2m1` no.
-   *
-   * El sufijo aleatorio es lo que impide adivinarlo. Sin \u00e9l, cualquiera que
-   * sepa a qui\u00e9n le estamos presentando reconstruye la URL desde el nombre de
-   * la empresa y lee la propuesta completa, honorarios incluidos.
-   */
+  /** El enlace del portal conserva un nombre de empresa legible al compartirlo. */
   private async createPublicSlug(
     company: string,
     repository: Repository<ProposalEntity> = this.proposals,
@@ -509,11 +486,16 @@ export class PropuestasService {
       .slice(0, SLUG_BASE_MAX);
     const base = normalizedCompany || 'propuesta';
 
-    let slug: string;
-    do {
-      slug = `${base}-${randomSlugSuffix()}`;
-    } while (await repository.exists({ where: { publicationSlug: slug } }));
+    if (!(await repository.exists({ where: { publicationSlug: base } }))) {
+      return base;
+    }
 
+    let suffix = 2;
+    let slug = `${base}-${suffix}`;
+    while (await repository.exists({ where: { publicationSlug: slug } })) {
+      suffix += 1;
+      slug = `${base}-${suffix}`;
+    }
     return slug;
   }
 

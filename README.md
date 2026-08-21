@@ -47,10 +47,10 @@ cerrado, nunca las deja abiertas.
 
 ## Enlaces del portal
 
-El slug conserva el nombre de la empresa y añade un sufijo aleatorio
-(`sodexo-colombia-k4m2xq7p`): el cliente reconoce su enlace, pero nadie puede deducirlo desde el
-nombre de la empresa. La migración `RandomizePublicationSlug` aplica el sufijo a los enlaces
-anteriores, **lo que invalida los ya enviados**: hay que volver a compartirlos.
+El slug conserva el nombre normalizado de la empresa (`sodexo-colombia`) para que el enlace sea
+legible al compartirlo. Si ya existe otro portal con ese nombre, se añade únicamente un ordinal
+(`sodexo-colombia-2`). Los enlaces históricos que ya tenían un sufijo no se modifican de forma
+automática.
 
 ## Aviso de apertura
 
